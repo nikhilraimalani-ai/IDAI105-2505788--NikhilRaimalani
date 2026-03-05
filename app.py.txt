@@ -1,0 +1,717 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+import warnings
+warnings.filterwarnings("ignore")
+
+# ─────────────────────────────────────────────
+#  PAGE CONFIG
+# ─────────────────────────────────────────────
+st.set_page_config(
+    page_title="SmartCharging Analytics",
+    page_icon="⚡",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# ─────────────────────────────────────────────
+#  GLOBAL CSS
+# ─────────────────────────────────────────────
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap');
+
+/* ── Base ── */
+html, body, [class*="css"] {
+    font-family: 'DM Sans', sans-serif;
+}
+.main { background: #07090f; }
+.block-container { padding: 2rem 2.5rem 4rem; }
+
+/* ── Sidebar ── */
+[data-testid="stSidebar"] {
+    background: #0d1117 !important;
+    border-right: 1px solid #1e2535;
+}
+[data-testid="stSidebar"] * { color: #c9d1e0 !important; }
+[data-testid="stSidebar"] .stSelectbox label,
+[data-testid="stSidebar"] .stSlider label { color: #6b7a99 !important; font-size: 0.75rem !important; text-transform: uppercase; letter-spacing: 0.08em; }
+
+/* ── Nav buttons ── */
+.nav-btn {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; margin: 3px 0;
+    border-radius: 8px; cursor: pointer;
+    font-size: 0.88rem; font-weight: 500;
+    color: #6b7a99; transition: all 0.2s;
+    border: none; background: transparent; width: 100%;
+    text-align: left;
+}
+.nav-btn:hover { background: #161d2e; color: #e2e8f0; }
+.nav-btn.active { background: #0f2044; color: #4da3ff; border-left: 2px solid #4da3ff; }
+.nav-icon { font-size: 1rem; width: 20px; text-align: center; }
+
+/* ── Page title ── */
+.page-hero {
+    margin-bottom: 2rem;
+}
+.page-hero h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: 2.4rem; font-weight: 800;
+    color: #e8edf5; letter-spacing: -0.02em;
+    line-height: 1.1; margin: 0 0 0.4rem;
+}
+.page-hero p {
+    font-size: 0.95rem; color: #5a6a8a; margin: 0;
+}
+
+/* ── KPI Cards ── */
+.kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 2rem; }
+.kpi-card {
+    background: #0d1117; border: 1px solid #1a2236;
+    border-radius: 12px; padding: 20px 22px;
+    position: relative; overflow: hidden;
+}
+.kpi-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0;
+    height: 2px; background: linear-gradient(90deg, #1b4fff, #00d4ff);
+}
+.kpi-label { font-size: 0.72rem; color: #4a5a7a; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+.kpi-value { font-family: 'Syne', sans-serif; font-size: 2rem; font-weight: 700; color: #e8edf5; line-height: 1; }
+.kpi-sub { font-size: 0.78rem; color: #3a5a8a; margin-top: 5px; }
+
+/* ── Section header ── */
+.section-header {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.05rem; font-weight: 700;
+    color: #c5cfe0; margin: 2rem 0 1rem;
+    display: flex; align-items: center; gap: 8px;
+}
+.section-header::after {
+    content: ''; flex: 1; height: 1px;
+    background: linear-gradient(90deg, #1a2236, transparent);
+}
+
+/* ── Divider ── */
+.divider { height: 1px; background: #1a2236; margin: 1.5rem 0; }
+
+/* ── Table styling ── */
+.dataframe { background: #0d1117 !important; color: #c9d1e0 !important; }
+
+/* ── Insight card ── */
+.insight-card {
+    background: #0a1628; border: 1px solid #1a2e4a;
+    border-left: 3px solid #4da3ff;
+    border-radius: 8px; padding: 14px 16px;
+    margin: 8px 0; font-size: 0.88rem; color: #8ba8cc;
+    line-height: 1.6;
+}
+.insight-card strong { color: #c5d8f0; }
+
+/* ── Cluster badge ── */
+.cluster-badge {
+    display: inline-block; padding: 3px 10px;
+    border-radius: 20px; font-size: 0.75rem; font-weight: 600;
+}
+
+/* ── Anomaly badge ── */
+.anomaly-pill {
+    background: #2a0a0a; color: #ff6b6b;
+    border: 1px solid #4a1515; border-radius: 20px;
+    padding: 2px 10px; font-size: 0.75rem; font-weight: 600;
+}
+
+/* ── Streamlit overrides ── */
+[data-testid="metric-container"] {
+    background: #0d1117; border: 1px solid #1a2236;
+    border-radius: 12px; padding: 16px 20px;
+}
+[data-testid="metric-container"] label { color: #4a5a7a !important; font-size: 0.72rem !important; text-transform: uppercase; letter-spacing: 0.1em; }
+[data-testid="metric-container"] [data-testid="stMetricValue"] { color: #e8edf5 !important; font-family: 'Syne', sans-serif; font-size: 1.8rem !important; }
+div[data-testid="stHorizontalBlock"] { gap: 14px; }
+.stDataFrame { border-radius: 10px; overflow: hidden; }
+[data-testid="stSelectbox"] > div > div { background: #0d1117; border-color: #1a2236; color: #c9d1e0; }
+.stSlider [data-baseweb="slider"] { padding: 0; }
+h1, h2, h3, h4 { font-family: 'Syne', sans-serif !important; color: #e8edf5 !important; }
+p, li { color: #8a9ab8; }
+.stCaption { color: #3a4a6a !important; font-size: 0.75rem !important; }
+</style>
+""", unsafe_allow_html=True)
+
+# ─────────────────────────────────────────────
+#  DATA LOADING
+# ─────────────────────────────────────────────
+@st.cache_data
+def load_data():
+    df = pd.read_csv("detailed_ev_charging_stations.csv")
+    return df
+
+@st.cache_data
+def run_clustering(n_clusters):
+    df = pd.read_csv("detailed_ev_charging_stations.csv")
+    features = ["Usage Stats (avg users/day)", "Charging Capacity (kW)",
+                "Cost (USD/kWh)", "Reviews (Rating)", "Distance to City (km)", "Parking Spots"]
+    X = df[features].dropna()
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+    inertias = []
+    for k in range(2, 11):
+        km = KMeans(n_clusters=k, random_state=42, n_init=10)
+        km.fit(X_scaled)
+        inertias.append(km.inertia_)
+    km_final = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+    labels = km_final.fit_predict(X_scaled)
+    result_df = df.loc[X.index].copy()
+    result_df["Cluster"] = labels.astype(str)
+    return result_df, inertias, features
+
+@st.cache_data
+def compute_rules(min_support, min_confidence):
+    try:
+        from mlxtend.frequent_patterns import apriori, association_rules
+        from mlxtend.preprocessing import TransactionEncoder
+    except ImportError:
+        return pd.DataFrame()
+    df = pd.read_csv("detailed_ev_charging_stations.csv")
+    df["Usage Level"] = pd.cut(df["Usage Stats (avg users/day)"], bins=[0,30,60,100,999],
+                                labels=["Low Usage","Medium Usage","High Usage","Very High Usage"])
+    df["Cost Level"] = pd.cut(df["Cost (USD/kWh)"], bins=[0,0.2,0.35,0.5,999],
+                               labels=["Cheap","Moderate Cost","Expensive","Very Expensive"])
+    df["Rating Level"] = pd.cut(df["Reviews (Rating)"], bins=[0,3,4,5],
+                                 labels=["Low Rated","Mid Rated","High Rated"])
+    df["Capacity Level"] = pd.cut(df["Charging Capacity (kW)"], bins=[0,50,150,350,9999],
+                                   labels=["Low Capacity","Medium Capacity","High Capacity","Ultra Capacity"])
+    tcols = ["Charger Type","Station Operator","Renewable Energy Source",
+             "Maintenance Frequency","Usage Level","Cost Level","Rating Level","Capacity Level"]
+    transactions = df[tcols].astype(str).values.tolist()
+    te = TransactionEncoder()
+    te_array = te.fit_transform(transactions)
+    te_df = pd.DataFrame(te_array, columns=te.columns_)
+    freq = apriori(te_df, min_support=min_support, use_colnames=True)
+    if len(freq) == 0:
+        return pd.DataFrame()
+    rules = association_rules(freq, metric="confidence", min_threshold=min_confidence)
+    rules["antecedents"] = rules["antecedents"].apply(lambda x: ", ".join(list(x)))
+    rules["consequents"] = rules["consequents"].apply(lambda x: ", ".join(list(x)))
+    rules = rules.sort_values("lift", ascending=False).reset_index(drop=True)
+    return rules[["antecedents","consequents","support","confidence","lift"]]
+
+@st.cache_data
+def detect_anomalies(method, threshold):
+    df = pd.read_csv("detailed_ev_charging_stations.csv")
+    cols = ["Usage Stats (avg users/day)","Cost (USD/kWh)","Reviews (Rating)","Charging Capacity (kW)"]
+    df["anomaly"] = False
+    df["anomaly_reason"] = ""
+    for col in cols:
+        if method == "Z-Score":
+            z = (df[col] - df[col].mean()) / df[col].std()
+            flag = z.abs() > threshold
+        else:
+            Q1, Q3 = df[col].quantile(0.25), df[col].quantile(0.75)
+            IQR = Q3 - Q1
+            flag = (df[col] < Q1 - threshold*IQR) | (df[col] > Q3 + threshold*IQR)
+        df.loc[flag & ~df["anomaly"], "anomaly_reason"] = col
+        df.loc[flag, "anomaly"] = True
+    return df
+
+# ─────────────────────────────────────────────
+#  PLOTLY THEME
+# ─────────────────────────────────────────────
+DARK_LAYOUT = dict(
+    plot_bgcolor="#0d1117",
+    paper_bgcolor="#0d1117",
+    font=dict(family="DM Sans", color="#8a9ab8"),
+    xaxis=dict(gridcolor="#1a2236", linecolor="#1a2236", zerolinecolor="#1a2236"),
+    yaxis=dict(gridcolor="#1a2236", linecolor="#1a2236", zerolinecolor="#1a2236"),
+    legend=dict(bgcolor="#0d1117", bordercolor="#1a2236"),
+    margin=dict(t=40, b=40, l=40, r=20)
+)
+ACCENT_SEQ = ["#4da3ff","#00d4c8","#a78bfa","#fb923c","#34d399","#f472b6","#facc15","#60a5fa"]
+
+df_raw = load_data()
+
+# ─────────────────────────────────────────────
+#  SIDEBAR
+# ─────────────────────────────────────────────
+with st.sidebar:
+    st.markdown("""
+    <div style='padding: 20px 4px 24px; border-bottom: 1px solid #1a2236; margin-bottom: 16px;'>
+        <div style='font-family: Syne, sans-serif; font-size: 1.15rem; font-weight: 800; color: #4da3ff; letter-spacing: -0.01em;'>
+            ⚡ SmartCharging
+        </div>
+        <div style='font-size: 0.72rem; color: #3a4a6a; margin-top: 3px; text-transform: uppercase; letter-spacing: 0.1em;'>
+            EV Analytics Platform
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    if "page" not in st.session_state:
+        st.session_state.page = "Home"
+
+    nav_items = [
+        ("Home", "🏠", "Overview & KPIs"),
+        ("EDA", "📊", "Exploratory Analysis"),
+        ("Map", "🗺️", "Station Map"),
+        ("Clustering", "🔵", "Behavior Clusters"),
+        ("Association", "🔗", "Rule Mining"),
+        ("Anomalies", "🚨", "Anomaly Detection"),
+    ]
+
+    st.markdown("<div style='font-size:0.68rem;color:#2a3a5a;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;padding: 0 4px;'>Navigation</div>", unsafe_allow_html=True)
+    for page_name, icon, label in nav_items:
+        active = st.session_state.page == page_name
+        btn_style = "background:#0f2044;color:#4da3ff;border-left:2px solid #4da3ff;" if active else "background:transparent;color:#6b7a99;"
+        if st.button(f"{icon}  {page_name}", key=f"nav_{page_name}", use_container_width=True):
+            st.session_state.page = page_name
+            st.rerun()
+
+    st.markdown("<div style='height:1px;background:#1a2236;margin:16px 0;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='font-size:0.68rem;color:#2a3a5a;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px;'>Global Filters</div>", unsafe_allow_html=True)
+
+    charger_types = ["All"] + sorted(df_raw["Charger Type"].dropna().unique().tolist())
+    sel_charger = st.selectbox("Charger Type", charger_types, key="g_charger")
+    operators = ["All"] + sorted(df_raw["Station Operator"].dropna().unique().tolist())
+    sel_operator = st.selectbox("Operator", operators, key="g_op")
+    sel_renewable = st.selectbox("Renewable", ["All", "Yes", "No"], key="g_ren")
+
+    df = df_raw.copy()
+    if sel_charger != "All": df = df[df["Charger Type"] == sel_charger]
+    if sel_operator != "All": df = df[df["Station Operator"] == sel_operator]
+    if sel_renewable != "All": df = df[df["Renewable Energy Source"] == sel_renewable]
+
+    st.markdown(f"<div style='font-size:0.72rem;color:#2a3a5a;margin-top:8px;'>{len(df):,} stations loaded</div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:1px;background:#1a2236;margin:16px 0 8px;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='font-size:0.68rem;color:#1a2a4a;text-align:center;'>SmartCharging Analytics · 2025</div>", unsafe_allow_html=True)
+
+page = st.session_state.page
+
+# ═════════════════════════════════════════════
+#  PAGE: HOME
+# ═════════════════════════════════════════════
+if page == "Home":
+    st.markdown("""
+    <div class='page-hero'>
+        <h1>SmartCharging Analytics</h1>
+        <p>Global EV charging intelligence — clusters, associations, anomalies, and live maps in one platform.</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    renewable_pct = (df["Renewable Energy Source"] == "Yes").mean() * 100
+    avg_usage = df["Usage Stats (avg users/day)"].mean()
+    avg_rating = df["Reviews (Rating)"].mean()
+    avg_cost = df["Cost (USD/kWh)"].mean()
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1: st.metric("Total Stations", f"{len(df):,}", delta=f"{len(df)-5000:+,} after filters" if len(df) != 5000 else None)
+    with c2: st.metric("Avg Users / Day", f"{avg_usage:.1f}")
+    with c3: st.metric("Avg Rating", f"{avg_rating:.2f} / 5")
+    with c4: st.metric("Renewable Powered", f"{renewable_pct:.1f}%")
+
+    st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
+
+    c5, c6 = st.columns(2)
+    with c5:
+        st.markdown("<div class='section-header'>Charger Type Distribution</div>", unsafe_allow_html=True)
+        ct = df["Charger Type"].value_counts().reset_index()
+        ct.columns = ["Type", "Count"]
+        fig = px.bar(ct, x="Type", y="Count", color="Type", color_discrete_sequence=ACCENT_SEQ)
+        fig.update_layout(**DARK_LAYOUT, showlegend=False)
+        st.plotly_chart(fig, use_container_width=True)
+
+    with c6:
+        st.markdown("<div class='section-header'>Station Operators</div>", unsafe_allow_html=True)
+        op = df["Station Operator"].value_counts().head(6).reset_index()
+        op.columns = ["Operator", "Count"]
+        fig = px.bar(op, x="Operator", y="Count", color="Operator", color_discrete_sequence=ACCENT_SEQ)
+        fig.update_layout(**DARK_LAYOUT, showlegend=False)
+        st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("<div class='section-header'>Installations Over Time</div>", unsafe_allow_html=True)
+    yr = df["Installation Year"].value_counts().sort_index().reset_index()
+    yr.columns = ["Year", "Count"]
+    fig = px.area(yr, x="Year", y="Count", color_discrete_sequence=["#4da3ff"])
+    fig.update_traces(fill='tozeroy', fillcolor='rgba(77,163,255,0.08)', line=dict(color='#4da3ff', width=2))
+    fig.update_layout(**DARK_LAYOUT)
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("<div class='section-header'>Dataset Preview</div>", unsafe_allow_html=True)
+    st.dataframe(df.head(50), use_container_width=True, height=300)
+    st.caption(f"Showing first 50 of {len(df):,} records")
+
+# ═════════════════════════════════════════════
+#  PAGE: EDA
+# ═════════════════════════════════════════════
+elif page == "EDA":
+    st.markdown("""
+    <div class='page-hero'>
+        <h1>Exploratory Analysis</h1>
+        <p>Distributions, correlations, and behavioral patterns across the dataset.</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("<div class='section-header'>Usage Stats Distribution</div>", unsafe_allow_html=True)
+        fig = px.histogram(df, x="Usage Stats (avg users/day)", nbins=40, color_discrete_sequence=["#4da3ff"])
+        fig.update_layout(**DARK_LAYOUT, bargap=0.04)
+        st.plotly_chart(fig, use_container_width=True)
+    with c2:
+        st.markdown("<div class='section-header'>Cost Distribution (USD/kWh)</div>", unsafe_allow_html=True)
+        fig = px.histogram(df, x="Cost (USD/kWh)", nbins=40, color_discrete_sequence=["#00d4c8"])
+        fig.update_layout(**DARK_LAYOUT, bargap=0.04)
+        st.plotly_chart(fig, use_container_width=True)
+
+    c3, c4 = st.columns(2)
+    with c3:
+        st.markdown("<div class='section-header'>Ratings Distribution</div>", unsafe_allow_html=True)
+        fig = px.histogram(df, x="Reviews (Rating)", nbins=25, color_discrete_sequence=["#a78bfa"])
+        fig.update_layout(**DARK_LAYOUT, bargap=0.04)
+        st.plotly_chart(fig, use_container_width=True)
+    with c4:
+        st.markdown("<div class='section-header'>Charging Capacity by Charger Type</div>", unsafe_allow_html=True)
+        fig = px.box(df, x="Charger Type", y="Charging Capacity (kW)", color="Charger Type",
+                     color_discrete_sequence=ACCENT_SEQ)
+        fig.update_layout(**DARK_LAYOUT, showlegend=False)
+        st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("<div class='section-header'>Average Daily Usage by Operator</div>", unsafe_allow_html=True)
+    op_usage = df.groupby("Station Operator")["Usage Stats (avg users/day)"].mean().sort_values(ascending=False).reset_index()
+    fig = px.bar(op_usage, x="Station Operator", y="Usage Stats (avg users/day)",
+                 color="Usage Stats (avg users/day)", color_continuous_scale="Blues")
+    fig.update_layout(**DARK_LAYOUT)
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("<div class='section-header'>Correlation Heatmap</div>", unsafe_allow_html=True)
+    num_cols = ["Cost (USD/kWh)","Distance to City (km)","Usage Stats (avg users/day)",
+                "Charging Capacity (kW)","Reviews (Rating)","Parking Spots"]
+    corr = df[num_cols].corr().round(2)
+    fig = px.imshow(corr, text_auto=True, color_continuous_scale="RdBu_r", zmin=-1, zmax=1, aspect="auto")
+    fig.update_layout(paper_bgcolor="#0d1117", plot_bgcolor="#0d1117",
+                      font=dict(color="#8a9ab8"), margin=dict(t=30,b=30,l=30,r=20))
+    st.plotly_chart(fig, use_container_width=True)
+
+    c5, c6 = st.columns(2)
+    with c5:
+        st.markdown("<div class='section-header'>Renewable Energy Split</div>", unsafe_allow_html=True)
+        ren = df["Renewable Energy Source"].value_counts().reset_index()
+        ren.columns = ["Renewable", "Count"]
+        fig = px.pie(ren, names="Renewable", values="Count",
+                     color_discrete_sequence=["#34d399","#f87171"], hole=0.5)
+        fig.update_layout(paper_bgcolor="#0d1117", font=dict(color="#8a9ab8"), margin=dict(t=20,b=20,l=20,r=20))
+        st.plotly_chart(fig, use_container_width=True)
+    with c6:
+        st.markdown("<div class='section-header'>Maintenance Frequency</div>", unsafe_allow_html=True)
+        mf = df["Maintenance Frequency"].value_counts().reset_index()
+        mf.columns = ["Frequency","Count"]
+        fig = px.bar(mf, x="Frequency", y="Count", color="Frequency", color_discrete_sequence=ACCENT_SEQ)
+        fig.update_layout(**DARK_LAYOUT, showlegend=False)
+        st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("<div class='section-header'>Usage vs Cost — Scatter</div>", unsafe_allow_html=True)
+    sample = df.sample(min(800, len(df)), random_state=42)
+    fig = px.scatter(sample, x="Cost (USD/kWh)", y="Usage Stats (avg users/day)",
+                     color="Charger Type", hover_name="Station ID",
+                     color_discrete_sequence=ACCENT_SEQ, opacity=0.7)
+    fig.update_layout(**DARK_LAYOUT)
+    st.plotly_chart(fig, use_container_width=True)
+
+# ═════════════════════════════════════════════
+#  PAGE: MAP
+# ═════════════════════════════════════════════
+elif page == "Map":
+    st.markdown("""
+    <div class='page-hero'>
+        <h1>Station Map</h1>
+        <p>Explore every EV charging station globally. Color, filter, and click to inspect.</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col_by = st.selectbox("Color markers by", ["Charger Type","Station Operator","Renewable Energy Source"])
+    sample_map = df.sample(min(1500, len(df)), random_state=42)
+
+    fig = px.scatter_geo(
+        sample_map, lat="Latitude", lon="Longitude",
+        color=col_by,
+        hover_name="Station ID",
+        hover_data={
+            "Charger Type": True, "Station Operator": True,
+            "Usage Stats (avg users/day)": True, "Reviews (Rating)": True,
+            "Cost (USD/kWh)": True, "Renewable Energy Source": True,
+            "Latitude": False, "Longitude": False
+        },
+        color_discrete_sequence=ACCENT_SEQ,
+        projection="natural earth",
+        opacity=0.8
+    )
+    fig.update_traces(marker=dict(size=5, line=dict(width=0)))
+    fig.update_geos(
+        bgcolor="#07090f",
+        landcolor="#0d1520",
+        oceancolor="#070c14",
+        lakecolor="#070c14",
+        coastlinecolor="#1a2e4a",
+        showcoastlines=True,
+        showland=True, showocean=True,
+        showlakes=True, showrivers=False,
+        countrycolor="#1a2438",
+        showcountries=True
+    )
+    fig.update_layout(
+        paper_bgcolor="#07090f",
+        font=dict(color="#8a9ab8"),
+        legend=dict(bgcolor="#0d1117", bordercolor="#1a2236", font=dict(color="#8a9ab8")),
+        margin=dict(t=10, b=10, l=0, r=0),
+        height=560
+    )
+    st.plotly_chart(fig, use_container_width=True)
+    st.caption(f"Showing {len(sample_map):,} of {len(df):,} stations · Colored by **{col_by}**")
+
+    st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("<div class='section-header'>Usage by Distance to City</div>", unsafe_allow_html=True)
+        fig2 = px.scatter(sample_map, x="Distance to City (km)", y="Usage Stats (avg users/day)",
+                          color="Charger Type", color_discrete_sequence=ACCENT_SEQ, opacity=0.6)
+        fig2.update_layout(**DARK_LAYOUT)
+        st.plotly_chart(fig2, use_container_width=True)
+    with c2:
+        st.markdown("<div class='section-header'>Cost vs Rating (by Operator)</div>", unsafe_allow_html=True)
+        fig3 = px.scatter(sample_map, x="Cost (USD/kWh)", y="Reviews (Rating)",
+                          color="Station Operator", color_discrete_sequence=ACCENT_SEQ, opacity=0.6)
+        fig3.update_layout(**DARK_LAYOUT)
+        st.plotly_chart(fig3, use_container_width=True)
+
+# ═════════════════════════════════════════════
+#  PAGE: CLUSTERING
+# ═════════════════════════════════════════════
+elif page == "Clustering":
+    st.markdown("""
+    <div class='page-hero'>
+        <h1>Cluster Analysis</h1>
+        <p>Group charging stations by usage behavior, cost, capacity, and performance.</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    n_clusters = st.slider("Number of Clusters (K)", min_value=2, max_value=8, value=3)
+    result_df, inertias, features = run_clustering(n_clusters)
+
+    st.markdown("<div class='section-header'>Elbow Method — Choosing Optimal K</div>", unsafe_allow_html=True)
+    elbow_df = pd.DataFrame({"K": list(range(2, 11)), "Inertia": inertias})
+    fig = px.line(elbow_df, x="K", y="Inertia", markers=True, color_discrete_sequence=["#4da3ff"])
+    fig.update_traces(marker=dict(size=8, color="#4da3ff"), line=dict(width=2))
+    fig.update_layout(**DARK_LAYOUT)
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("<div class='section-header'>Cluster Scatter</div>", unsafe_allow_html=True)
+    c1, c2 = st.columns(2)
+    with c1: x_axis = st.selectbox("X Axis", features, index=0)
+    with c2: y_axis = st.selectbox("Y Axis", features, index=1)
+
+    fig = px.scatter(result_df.sample(min(800, len(result_df)), random_state=1),
+                     x=x_axis, y=y_axis, color="Cluster",
+                     hover_data=["Station ID","Charger Type","Station Operator"],
+                     color_discrete_sequence=ACCENT_SEQ, opacity=0.75)
+    fig.update_layout(**DARK_LAYOUT)
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("<div class='section-header'>Cluster Profiles</div>", unsafe_allow_html=True)
+    summary = result_df.groupby("Cluster")[features].mean().round(2)
+    cluster_names = []
+    for idx, row in summary.iterrows():
+        usage_med = summary["Usage Stats (avg users/day)"].median()
+        cost_med = summary["Cost (USD/kWh)"].median()
+        rating_med = summary["Reviews (Rating)"].median()
+        if row["Usage Stats (avg users/day)"] > usage_med and row["Cost (USD/kWh)"] < cost_med:
+            cluster_names.append("🟢 High Demand · Low Cost")
+        elif row["Usage Stats (avg users/day)"] > usage_med and row["Cost (USD/kWh)"] >= cost_med:
+            cluster_names.append("🟡 High Demand · Premium")
+        elif row["Reviews (Rating)"] > rating_med:
+            cluster_names.append("🔵 Low Traffic · High Rated")
+        else:
+            cluster_names.append("🔴 Underperforming")
+    summary.insert(0, "Profile", cluster_names)
+    summary.index = [f"Cluster {i}" for i in summary.index]
+    st.dataframe(summary, use_container_width=True)
+
+    st.markdown("<div class='section-header'>Cluster World Map</div>", unsafe_allow_html=True)
+    sample_c = result_df.sample(min(800, len(result_df)), random_state=42)
+    fig = px.scatter_geo(sample_c, lat="Latitude", lon="Longitude", color="Cluster",
+                         hover_name="Station ID",
+                         hover_data=["Charger Type","Usage Stats (avg users/day)","Cluster"],
+                         color_discrete_sequence=ACCENT_SEQ, projection="natural earth", opacity=0.85)
+    fig.update_traces(marker=dict(size=5))
+    fig.update_geos(bgcolor="#07090f", landcolor="#0d1520", oceancolor="#070c14",
+                    coastlinecolor="#1a2e4a", showcoastlines=True, showland=True,
+                    showocean=True, countrycolor="#1a2438", showcountries=True)
+    fig.update_layout(paper_bgcolor="#07090f", font=dict(color="#8a9ab8"),
+                      legend=dict(bgcolor="#0d1117", bordercolor="#1a2236"),
+                      margin=dict(t=10, b=10, l=0, r=0), height=480)
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("<div class='section-header'>Cluster Composition</div>", unsafe_allow_html=True)
+    c3, c4 = st.columns(2)
+    with c3:
+        comp = result_df.groupby(["Cluster","Charger Type"]).size().reset_index(name="Count")
+        fig = px.bar(comp, x="Cluster", y="Count", color="Charger Type",
+                     color_discrete_sequence=ACCENT_SEQ, barmode="stack")
+        fig.update_layout(**DARK_LAYOUT)
+        st.plotly_chart(fig, use_container_width=True)
+    with c4:
+        comp2 = result_df.groupby(["Cluster","Renewable Energy Source"]).size().reset_index(name="Count")
+        fig = px.bar(comp2, x="Cluster", y="Count", color="Renewable Energy Source",
+                     color_discrete_sequence=["#34d399","#f87171"], barmode="stack")
+        fig.update_layout(**DARK_LAYOUT)
+        st.plotly_chart(fig, use_container_width=True)
+
+# ═════════════════════════════════════════════
+#  PAGE: ASSOCIATION RULES
+# ═════════════════════════════════════════════
+elif page == "Association":
+    st.markdown("""
+    <div class='page-hero'>
+        <h1>Association Rule Mining</h1>
+        <p>Hidden connections between station features, usage levels, and performance indicators.</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    c1, c2 = st.columns(2)
+    with c1: min_support = st.slider("Min Support", 0.05, 0.5, 0.1, 0.01)
+    with c2: min_confidence = st.slider("Min Confidence", 0.3, 1.0, 0.5, 0.05)
+
+    st.markdown("""
+    <div class='insight-card'>
+        <strong>Support</strong> — how often this pattern appears in the data &nbsp;·&nbsp;
+        <strong>Confidence</strong> — how reliable the rule is &nbsp;·&nbsp;
+        <strong>Lift</strong> — how much better than random chance (>1 = meaningful)
+    </div>
+    """, unsafe_allow_html=True)
+
+    with st.spinner("Mining association rules..."):
+        rules = compute_rules(min_support, min_confidence)
+
+    if rules.empty:
+        st.warning("No rules found. Try lowering Support or Confidence thresholds.")
+    else:
+        st.markdown(f"<div class='section-header'>Found {len(rules)} rules</div>", unsafe_allow_html=True)
+
+        top_rules = rules.head(20).copy()
+        top_rules["support"] = top_rules["support"].round(3)
+        top_rules["confidence"] = top_rules["confidence"].round(3)
+        top_rules["lift"] = top_rules["lift"].round(3)
+        top_rules.index = range(1, len(top_rules)+1)
+        st.dataframe(top_rules, use_container_width=True)
+
+        st.markdown("<div class='section-header'>Top 10 Rules by Lift</div>", unsafe_allow_html=True)
+        top10 = rules.head(10).copy()
+        top10["rule"] = top10["antecedents"] + " → " + top10["consequents"]
+        fig = px.bar(top10, x="lift", y="rule", orientation="h",
+                     color="confidence", color_continuous_scale="Blues",
+                     labels={"lift":"Lift","rule":"Rule"})
+        fig.update_layout(**DARK_LAYOUT, yaxis={"categoryorder":"total ascending"})
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.markdown("<div class='section-header'>Support vs Confidence</div>", unsafe_allow_html=True)
+        fig2 = px.scatter(rules.head(60), x="support", y="confidence",
+                          size="lift", color="lift",
+                          hover_data=["antecedents","consequents"],
+                          color_continuous_scale="Viridis", size_max=30)
+        fig2.update_layout(**DARK_LAYOUT)
+        st.plotly_chart(fig2, use_container_width=True)
+
+        st.markdown("<div class='section-header'>💬 Plain English Insights</div>", unsafe_allow_html=True)
+        for _, row in rules.head(6).iterrows():
+            strength = "strongly" if row["lift"] > 2 else "moderately"
+            st.markdown(f"""
+            <div class='insight-card'>
+                Stations with <strong>{row['antecedents']}</strong> are {strength} associated
+                with <strong>{row['consequents']}</strong>
+                — confidence <strong>{row['confidence']:.0%}</strong>, lift <strong>{row['lift']:.2f}×</strong>
+            </div>
+            """, unsafe_allow_html=True)
+
+# ═════════════════════════════════════════════
+#  PAGE: ANOMALY DETECTION
+# ═════════════════════════════════════════════
+elif page == "Anomalies":
+    st.markdown("""
+    <div class='page-hero'>
+        <h1>Anomaly Detection</h1>
+        <p>Stations with unusual usage, cost, rating, or capacity behavior.</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    c1, c2 = st.columns(2)
+    with c1: method = st.selectbox("Detection Method", ["Z-Score", "IQR"])
+    with c2:
+        if method == "Z-Score":
+            threshold = st.slider("Z-Score Threshold", 1.5, 4.0, 2.5, 0.1)
+        else:
+            threshold = st.slider("IQR Multiplier", 1.0, 3.0, 1.5, 0.1)
+
+    result = detect_anomalies(method, threshold)
+    anomalies = result[result["anomaly"]]
+    normal = result[~result["anomaly"]]
+
+    # Apply sidebar filters
+    if sel_charger != "All": anomalies = anomalies[anomalies["Charger Type"] == sel_charger]
+    if sel_operator != "All": anomalies = anomalies[anomalies["Station Operator"] == sel_operator]
+
+    pct = len(anomalies) / len(result) * 100
+    c3, c4, c5 = st.columns(3)
+    with c3: st.metric("Anomalous Stations", f"{len(anomalies):,}")
+    with c4: st.metric("Anomaly Rate", f"{pct:.1f}%")
+    with c5: st.metric("Normal Stations", f"{len(normal):,}")
+
+    st.markdown("<div class='section-header'>Anomaly Distribution by Feature</div>", unsafe_allow_html=True)
+    sel_feature = st.selectbox("Feature to inspect", [
+        "Usage Stats (avg users/day)","Cost (USD/kWh)","Reviews (Rating)","Charging Capacity (kW)"
+    ])
+
+    fig = go.Figure()
+    fig.add_trace(go.Histogram(x=normal[sel_feature], name="Normal",
+                               marker_color="#4da3ff", opacity=0.65, nbinsx=50))
+    fig.add_trace(go.Histogram(x=anomalies[sel_feature], name="Anomaly",
+                               marker_color="#f87171", opacity=0.9, nbinsx=50))
+    fig.update_layout(**DARK_LAYOUT, barmode="overlay",
+                      xaxis_title=sel_feature, yaxis_title="Count")
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("<div class='section-header'>Anomaly World Map</div>", unsafe_allow_html=True)
+    sn = normal.sample(min(400, len(normal)), random_state=42).assign(Type="Normal")
+    sa = anomalies.sample(min(300, len(anomalies)), random_state=42).assign(Type="Anomaly") if len(anomalies) > 0 else pd.DataFrame()
+    map_df = pd.concat([sn, sa]) if len(sa) > 0 else sn
+
+    fig2 = px.scatter_geo(map_df, lat="Latitude", lon="Longitude", color="Type",
+                           color_discrete_map={"Normal":"#4da3ff","Anomaly":"#f87171"},
+                           hover_name="Station ID",
+                           hover_data={sel_feature:True,"Charger Type":True,"Latitude":False,"Longitude":False},
+                           projection="natural earth", opacity=0.85)
+    fig2.update_traces(marker=dict(size=5))
+    fig2.update_geos(bgcolor="#07090f", landcolor="#0d1520", oceancolor="#070c14",
+                     coastlinecolor="#1a2e4a", showcoastlines=True, showland=True,
+                     showocean=True, countrycolor="#1a2438", showcountries=True)
+    fig2.update_layout(paper_bgcolor="#07090f", font=dict(color="#8a9ab8"),
+                       legend=dict(bgcolor="#0d1117", bordercolor="#1a2236"),
+                       margin=dict(t=10, b=10, l=0, r=0), height=480)
+    st.plotly_chart(fig2, use_container_width=True)
+
+    st.markdown("<div class='section-header'>Anomalous Stations — Detail Table</div>", unsafe_allow_html=True)
+    display_cols = ["Station ID","Address","Charger Type","Station Operator",
+                    "Usage Stats (avg users/day)","Cost (USD/kWh)",
+                    "Reviews (Rating)","Charging Capacity (kW)","anomaly_reason"]
+    disp = anomalies[display_cols].rename(columns={"anomaly_reason":"Flagged For"}).reset_index(drop=True)
+    st.dataframe(disp, use_container_width=True)
+    st.caption(f"{len(anomalies):,} anomalous stations detected using {method} (threshold: {threshold})")
+
+    st.markdown("<div class='section-header'>Anomaly Breakdown by Type</div>", unsafe_allow_html=True)
+    breakdown = anomalies["anomaly_reason"].value_counts().reset_index()
+    breakdown.columns = ["Feature", "Count"]
+    fig3 = px.bar(breakdown, x="Feature", y="Count", color="Feature",
+                  color_discrete_sequence=["#f87171","#fb923c","#a78bfa","#34d399"])
+    fig3.update_layout(**DARK_LAYOUT, showlegend=False)
+    st.plotly_chart(fig3, use_container_width=True)

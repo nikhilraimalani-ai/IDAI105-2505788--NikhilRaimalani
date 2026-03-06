@@ -89,29 +89,28 @@ def apriori_scratch(transactions, min_support, min_confidence):
     n = len(transactions)
     item_counts = defaultdict(int)
     for t in transactions:
-        for item in t:
+        for item in set(t):
             item_counts[frozenset([item])] += 1
     freq = {k: v/n for k, v in item_counts.items() if v/n >= min_support}
     all_freq = dict(freq)
     prev = list(freq.keys())
     size = 2
-    while prev:
-        candidates = []
-        items = sorted(set(i for fs in prev for i in fs))
-        for combo in combinations(items, size):
-            fs = frozenset(combo)
-            if all(frozenset(combo[:size-1]), frozenset(combo[1:])):
-                candidates.append(fs)
+    while prev and size <= 4:
+        # Generate candidates from frequent itemsets of previous size
+        prev_items = sorted(set(i for fs in prev for i in fs))
         counts = defaultdict(int)
         for t in transactions:
             ts = set(t)
-            for c in candidates:
-                if c <= ts: counts[c] += 1
-        new_freq = {k: v/n for k,v in counts.items() if v/n >= min_support}
+            for combo in combinations(prev_items, size):
+                fs = frozenset(combo)
+                # Only count if all size-1 subsets are frequent
+                if all(frozenset(combo[:j] + combo[j+1:]) in all_freq for j in range(size)):
+                    if fs <= ts:
+                        counts[fs] += 1
+        new_freq = {k: v/n for k, v in counts.items() if v/n >= min_support}
         all_freq.update(new_freq)
         prev = list(new_freq.keys())
         size += 1
-        if size > 4: break
     rules = []
     for fs in all_freq:
         if len(fs) < 2: continue
@@ -278,16 +277,19 @@ elif page == "EDA":
     with c1:
         sh("Usage Stats — Histogram")
         bins = pd.cut(df["Usage Stats (avg users/day)"], bins=20).value_counts().sort_index()
+        bins.index = [str(i) for i in bins.index]
         st.bar_chart(bins, color="#4da3ff")
     with c2:
         sh("Cost Distribution (USD/kWh)")
         bins2 = pd.cut(df["Cost (USD/kWh)"], bins=20).value_counts().sort_index()
+        bins2.index = [str(i) for i in bins2.index]
         st.bar_chart(bins2, color="#00d4c8")
 
     c3,c4 = st.columns(2)
     with c3:
         sh("Ratings Distribution")
         bins3 = pd.cut(df["Reviews (Rating)"], bins=15).value_counts().sort_index()
+        bins3.index = [str(i) for i in bins3.index]
         st.bar_chart(bins3, color="#a78bfa")
     with c4:
         sh("Avg Charging Capacity by Type")
@@ -460,7 +462,7 @@ elif page == "Anomalies":
     c1,c2 = st.columns(2)
     with c1: method = st.selectbox("Detection Method", ["Z-Score","IQR"])
     with c2:
-        if method == "Z-Score": threshold = st.slider("Z-Score Threshold", 1.5, 4.0, 2.5, 0.1)
+        if method == "Z-Score": threshold = st.slider("Z-Score Threshold", 1.5, 4.0, 2.0, 0.1)
         else:                   threshold = st.slider("IQR Multiplier",     1.0, 3.0, 1.5, 0.1)
 
     result    = get_anomalies(method, threshold)
@@ -482,11 +484,13 @@ elif page == "Anomalies":
     with c6:
         sh("Normal — Distribution")
         nb = pd.cut(normal[sel_feat], bins=20).value_counts().sort_index()
+        nb.index = [str(i) for i in nb.index]
         st.bar_chart(nb, color="#4da3ff")
     with c7:
         sh("Anomalies — Distribution")
         if len(anomalies) > 0:
             ab = pd.cut(anomalies[sel_feat], bins=20).value_counts().sort_index()
+            ab.index = [str(i) for i in ab.index]
             st.bar_chart(ab, color="#f87171")
         else:
             st.info("No anomalies detected with current settings.")

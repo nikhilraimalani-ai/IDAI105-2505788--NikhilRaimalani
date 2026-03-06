@@ -318,7 +318,7 @@ elif page == "EDA":
     num_cols = ["Cost (USD/kWh)","Distance to City (km)","Usage Stats (avg users/day)",
                 "Charging Capacity (kW)","Reviews (Rating)","Parking Spots"]
     corr = df[num_cols].corr().round(2)
-    st.dataframe(corr.style.background_gradient(cmap="RdBu", vmin=-1, vmax=1), use_container_width=True)
+    st.dataframe(corr, use_container_width=True)
 
     sh("Usage vs Cost — Sample Scatter")
     samp = df[["Usage Stats (avg users/day)","Cost (USD/kWh)","Latitude","Longitude"]].dropna().sample(min(500,len(df)),random_state=42)
@@ -344,7 +344,7 @@ elif page == "Map":
     with c1:
         sh("Usage by Distance Bracket")
         df2 = df.copy()
-        df2["Distance Bracket"] = pd.cut(df2["Distance to City (km)"], bins=5)
+        df2["Distance Bracket"] = pd.cut(df2["Distance to City (km)"], bins=5).astype(str)
         dist_usage = df2.groupby("Distance Bracket")["Usage Stats (avg users/day)"].mean()
         st.bar_chart(dist_usage, color="#4da3ff")
     with c2:
